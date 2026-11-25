@@ -1,4 +1,5 @@
 <?php
+// Despliegue v2 - Damian IA activo
 declare(strict_types=1);
 
 ini_set('display_errors', '0');
