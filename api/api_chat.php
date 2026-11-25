@@ -69,6 +69,11 @@ if ($pregunta === '') {
     exit;
 }
 
+if (mb_strlen($pregunta) > 600) {
+    echo json_encode(['respuesta' => 'Tu consulta es demasiado larga. Por favor resúmela en menos de 600 caracteres.'], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
 $apiKey = leerVariableEntorno('GEMINI_API_KEY');
 if ($apiKey === '') {
     echo json_encode(['respuesta' => 'Error: No se encontró GEMINI_API_KEY en Env Vars de EthioDeploy.'], JSON_UNESCAPED_UNICODE);
@@ -97,7 +102,7 @@ try {
         }
     }
 } catch (Throwable $e) {
-    // Mantiene el menú por defecto si falla la consulta
+    // Mantiene el menú de respaldo si falla la consulta
 }
 
 $promptSistema = "Eres Damian, el asistente gastronómico virtual oficial del restaurante Gastrodalk. "
@@ -106,54 +111,99 @@ $promptSistema = "Eres Damian, el asistente gastronómico virtual oficial del re
     . $contextoMenu . "\n\n"
     . "Consulta del cliente: " . $pregunta;
 
-$url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=" . urlencode($apiKey);
+$modelos = ['gemini-3.8-flash', 'gemini-3.8-flash-lite', 'gemini-3.5-flash'];
 $payloadJson = json_encode([
     'contents' => [['parts' => [['text' => $promptSistema]]]],
-    'generationConfig' => ['temperature' => 0.7, 'maxOutputTokens' => 450],
+    'generationConfig' => [
+        'temperature'     => 0.7,
+        'maxOutputTokens' => 1200,
+        'thinkingConfig'  => [
+            'thinkingBudget' => 0,
+        ],
+    ],
 ], JSON_UNESCAPED_UNICODE);
 
-$response = false;
-$httpCode = 0;
+$respuestaFinal = null;
+$ultimoError = 'Servicio temporalmente saturado.';
+$codigoHttpFinal = 0;
 
-if (function_exists('curl_init')) {
-    $ch = curl_init($url);
-    curl_setopt_array($ch, [
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_POST           => true,
-        CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
-        CURLOPT_POSTFIELDS     => $payloadJson,
-        CURLOPT_TIMEOUT        => 25,
-    ]);
-    $response = curl_exec($ch);
-    $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-} else {
-    $ctx = stream_context_create([
-        'http' => [
-            'method'        => 'POST',
-            'header'        => "Content-Type: application/json\r\n",
-            'content'       => $payloadJson,
-            'timeout'       => 25,
-            'ignore_errors' => true,
-        ],
-    ]);
-    $response = @file_get_contents($url, false, $ctx);
-    if (isset($http_response_header[0]) && preg_match('/\s(\d{3})\s/', $http_response_header[0], $m)) {
-        $httpCode = (int) $m[1];
+foreach ($modelos as $modelo) {
+    $url = "https://generativelanguage.googleapis.com/v1beta/models/{$modelo}:generateContent?key=" . urlencode($apiKey);
+    $response = false;
+    $httpCode = 0;
+
+    if (function_exists('curl_init')) {
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST           => true,
+            CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
+            CURLOPT_POSTFIELDS     => $payloadJson,
+            CURLOPT_TIMEOUT        => 20,
+        ]);
+        $response = curl_exec($ch);
+        $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+    } else {
+        $ctx = stream_context_create([
+            'http' => [
+                'method'        => 'POST',
+                'header'        => "Content-Type: application/json\r\n",
+                'content'       => $payloadJson,
+                'timeout'       => 20,
+                'ignore_errors' => true,
+            ],
+        ]);
+        $response = @file_get_contents($url, false, $ctx);
+        if (isset($http_response_header[0]) && preg_match('/\s(\d{3})\s/', $http_response_header[0], $m)) {
+            $httpCode = (int) $m[1];
+        }
     }
+
+    if ($response === false || $response === '') {
+        continue;
+    }
+
+    $data = json_decode((string) $response, true);
+    if ($httpCode < 400 && !empty($data['candidates'][0]['content']['parts'])) {
+        $partesTexto = [];
+        foreach ($data['candidates'][0]['content']['parts'] as $parte) {
+            if (!empty($parte['thought'])) {
+                continue;
+            }
+            if (isset($parte['text'])) {
+                $partesTexto[] = (string) $parte['text'];
+            }
+        }
+        $textoCandidato = trim(implode("\n", $partesTexto));
+        if ($textoCandidato !== '') {
+            $respuestaFinal = $textoCandidato;
+            break;
+        }
+    }
+
+    $codigoHttpFinal = $httpCode;
+    $ultimoError = $data['error']['message'] ?? "HTTP {$httpCode}";
+
+    // Si es saturación (503/429) o modelo no disponible (404), intenta con el siguiente modelo
+    if (in_array($httpCode, [404, 429, 500, 503], true)) {
+        continue;
+    }
+    break;
 }
 
-if ($response === false || $response === '') {
-    echo json_encode(['respuesta' => 'El servidor no obtuvo respuesta de red desde Google Gemini.'], JSON_UNESCAPED_UNICODE);
+if ($respuestaFinal === null) {
+    if (in_array($codigoHttpFinal, [0, 429, 500, 503], true)) {
+        echo json_encode([
+            'respuesta' => 'En este momento hay alta demanda en el servicio de IA. Por favor intenta de nuevo en unos segundos.'
+        ], JSON_UNESCAPED_UNICODE);
+    } else {
+        echo json_encode([
+            'respuesta' => "No se pudo procesar tu consulta ({$ultimoError})."
+        ], JSON_UNESCAPED_UNICODE);
+    }
     exit;
 }
 
-$data = json_decode((string) $response, true);
-if ($httpCode >= 400 || !isset($data['candidates'][0]['content']['parts'][0]['text'])) {
-    $detalle = $data['error']['message'] ?? "HTTP {$httpCode}";
-    echo json_encode(['respuesta' => "Error de Google Gemini: {$detalle}"], JSON_UNESCAPED_UNICODE);
-    exit;
-}
-
-$texto = str_replace(['**', '*', '#', '`'], '', (string) $data['candidates'][0]['content']['parts'][0]['text']);
-echo json_encode(['respuesta' => trim($texto)], JSON_UNESCAPED_UNICODE);
+$textoLimpio = str_replace(['**', '*', '#', '`'], '', $respuestaFinal);
+echo json_encode(['respuesta' => trim($textoLimpio)], JSON_UNESCAPED_UNICODE);
