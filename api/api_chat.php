@@ -16,8 +16,23 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
-$input = json_decode(file_get_contents('php://input'), true);
-$pregunta = trim((string) ($input['pregunta'] ?? ($_POST['pregunta'] ?? '')));
+// Leer el cuerpo JSON o formulario POST aceptando múltiples nombres de campo
+$rawBody = file_get_contents('php://input');
+$input = is_string($rawBody) ? json_decode($rawBody, true) : [];
+if (!is_array($input)) {
+    $input = [];
+}
+
+$pregunta = trim((string) (
+    $input['pregunta']
+    ?? $input['mensaje']
+    ?? $input['message']
+    ?? $input['prompt']
+    ?? $_POST['pregunta']
+    ?? $_POST['mensaje']
+    ?? $_POST['message']
+    ?? ''
+));
 
 if ($pregunta === '') {
     echo json_encode(['respuesta' => 'Por favor escribe tu consulta sobre nuestro menú o servicios.'], JSON_UNESCAPED_UNICODE);
