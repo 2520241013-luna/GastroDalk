@@ -111,7 +111,7 @@ $promptSistema = "Eres Damian, el asistente gastronómico virtual oficial del re
     . $contextoMenu . "\n\n"
     . "Consulta del cliente: " . $pregunta;
 
-$modelos = ['gemini-3.8-flash', 'gemini-3.8-flash-lite', 'gemini-3.5-flash'];
+$modelos = ['gemini-3.8-flash', 'gemini-3.8-flash'];
 $payloadJson = json_encode([
     'contents' => [['parts' => [['text' => $promptSistema]]]],
     'generationConfig' => [
@@ -185,8 +185,8 @@ foreach ($modelos as $modelo) {
     $codigoHttpFinal = $httpCode;
     $ultimoError = $data['error']['message'] ?? "HTTP {$httpCode}";
 
-    // Si es saturación (503/429) o modelo no disponible (404), intenta con el siguiente modelo
-    if (in_array($httpCode, [404, 429, 500, 503], true)) {
+    if (in_array($httpCode, [429, 500, 503], true)) {
+        sleep(1);
         continue;
     }
     break;
