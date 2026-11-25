@@ -105,7 +105,7 @@ $promptSistema = "Eres Damian, el asistente gastronómico virtual oficial del re
     . "Basa tus recomendaciones únicamente en este menú:\n\n"
     . $contextoMenu . "\n\n"
     . "Consulta del cliente: " . $pregunta;
-
+    
 $url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=" . urlencode($apiKey);
 
 $payloadJson = json_encode([
