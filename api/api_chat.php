@@ -26,6 +26,41 @@ set_exception_handler(function (Throwable $e) {
     ], 500);
 });
 
+if (!function_exists('leerEntornoSeguro')) {
+    function leerEntornoSeguro(string $nombre): string
+    {
+        $valor = getenv($nombre);
+        if ($valor !== false && trim((string) $valor) !== '') {
+            return trim((string) $valor);
+        }
+        if (!empty($_ENV[$nombre])) {
+            return trim((string) $_ENV[$nombre]);
+        }
+        if (!empty($_SERVER[$nombre])) {
+            return trim((string) $_SERVER[$nombre]);
+        }
+
+        $envPath = __DIR__ . '/../.env';
+        if (is_readable($envPath)) {
+            $lineas = file($envPath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+            if (is_array($lineas)) {
+                foreach ($lineas as $linea) {
+                    $linea = trim($linea);
+                    if ($linea === '' || str_starts_with($linea, '#') || !str_contains($linea, '=')) {
+                        continue;
+                    }
+                    [$clave, $valorLinea] = explode('=', $linea, 2);
+                    if (trim($clave) === $nombre) {
+                        return trim($valorLinea, " \t\n\r\0\x0B\"'");
+                    }
+                }
+            }
+        }
+
+        return '';
+    }
+}
+
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     responderJson(['error' => 'Usa método POST desde el chat.'], 405);
 }
@@ -38,10 +73,22 @@ if ($pregunta === '') {
     responderJson(['error' => 'Escribe una pregunta para Damian IA.'], 400);
 }
 
-$menuTexto = "Menú disponible hoy en Gastrodalk:\n";
-if ($conexion instanceof PDO) {
+$pdo = null;
+if (function_exists('obtenerConexion') && ($errorConexion ?? null) === null) {
     try {
-        $stmt = $conexion->query("SELECT nombre, descripcion, precio, categoria FROM platos WHERE disponible = 1");
+        $pdo = obtenerConexion();
+    } catch (Throwable $e) {
+        $errorConexion = $e->getMessage();
+        error_log('Error al obtener conexión PDO en api_chat.php: ' . $errorConexion);
+    }
+} elseif (($conexion ?? null) instanceof PDO) {
+    $pdo = $conexion;
+}
+
+$menuTexto = "Menú disponible hoy en Gastrodalk:\n";
+if ($pdo instanceof PDO) {
+    try {
+        $stmt = $pdo->query("SELECT nombre, descripcion, precio, categoria FROM platos WHERE disponible = 1");
         $platos = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
 
         if (!empty($platos)) {
@@ -68,6 +115,11 @@ if ($apiKey === '') {
     responderJson(['error' => 'Falta configurar GROQ_API_KEY en el entorno o en .env.'], 500);
 }
 
+$modeloGroq = leerEntornoSeguro('GROQ_MODEL');
+if ($modeloGroq === '') {
+    $modeloGroq = 'openai/gpt-oss-120b';
+}
+
 $instruccionesSistema = "Eres Damian IA, el asistente virtual de recomendación gastronómica del restaurante Gastrodalk. Responde de forma amable, breve y persuasiva basándote ÚNICAMENTE en la siguiente información:\n\n"
     . $menuTexto . "\n"
     . "Información del restaurante:\n"
@@ -77,7 +129,7 @@ $instruccionesSistema = "Eres Damian IA, el asistente virtual de recomendación 
     . "- No uses asteriscos (*) ni bloques de código en la respuesta.";
 
 $payload = json_encode([
-    'model' => 'llama-3.3-70b-versatile',
+    'model' => $modeloGroq,
     'messages' => [
         [
             'role' => 'system',
@@ -89,7 +141,7 @@ $payload = json_encode([
         ]
     ],
     'temperature' => 0.4,
-    'max_tokens' => 300
+    'max_tokens' => 400
 ], JSON_UNESCAPED_UNICODE);
 
 if (!function_exists('curl_init')) {
