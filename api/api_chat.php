@@ -1,210 +1,127 @@
 <?php
-// Despliegue v2 - Damian IA activo
 declare(strict_types=1);
 
+ob_start();
 ini_set('display_errors', '0');
+ini_set('display_startup_errors', '0');
+error_reporting(E_ALL & ~E_DEPRECATED);
 header('Content-Type: application/json; charset=utf-8');
 
-function leerVariableEntorno(string $nombre): string
+require_once __DIR__ . '/../conexion/conexion.php';
+
+function responderJson(array $payload, int $status = 200): never
 {
-    $valor = getenv($nombre);
-    if ($valor !== false && $valor !== '') {
-        return trim((string) $valor);
+    while (ob_get_level() > 0) {
+        ob_end_clean();
     }
-    if (!empty($_ENV[$nombre])) {
-        return trim((string) $_ENV[$nombre]);
-    }
-    if (!empty($_SERVER[$nombre])) {
-        return trim((string) $_SERVER[$nombre]);
-    }
-    if (is_readable('/proc/self/environ')) {
-        $raw = @file_get_contents('/proc/self/environ');
-        if (is_string($raw) && $raw !== '') {
-            foreach (explode("\0", $raw) as $par) {
-                if (str_starts_with($par, $nombre . '=')) {
-                    return trim(substr($par, strlen($nombre) + 1));
-                }
-            }
-        }
-    }
-    $envPath = __DIR__ . '/../.env';
-    if (is_readable($envPath)) {
-        foreach (file($envPath, FILE_IGNORE_NEW_LINES + FILE_SKIP_EMPTY_LINES) as $linea) {
-            $linea = trim($linea);
-            if ($linea === '' || str_starts_with($linea, '#') || !str_contains($linea, '=')) {
-                continue;
-            }
-            [$k, $v] = explode('=', $linea, 2);
-            if (trim($k) === $nombre) {
-                return trim($v, " \t\n\r\0\x0B\"'");
-            }
-        }
-    }
-    return '';
+    http_response_code($status);
+    echo json_encode($payload, JSON_UNESCAPED_UNICODE);
+    exit;
 }
+
+set_exception_handler(function (Throwable $e) {
+    error_log('Excepción en api_chat.php: ' . $e->getMessage());
+    responderJson([
+        'error' => 'Error interno en el servidor de chat.'
+    ], 500);
+});
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    echo json_encode(['respuesta' => 'Método no permitido.'], JSON_UNESCAPED_UNICODE);
-    exit;
+    responderJson(['error' => 'Usa método POST desde el chat.'], 405);
 }
 
-$rawBody = file_get_contents('php://input');
-$input = is_string($rawBody) ? json_decode($rawBody, true) : [];
-if (!is_array($input)) {
-    $input = [];
-}
-
-$pregunta = trim((string) (
-    $input['pregunta']
-    ?? $input['mensaje']
-    ?? $input['message']
-    ?? $input['prompt']
-    ?? $_POST['pregunta']
-    ?? $_POST['mensaje']
-    ?? $_POST['message']
-    ?? ''
-));
+$rawInput = file_get_contents('php://input');
+$cuerpo = is_string($rawInput) && $rawInput !== '' ? json_decode($rawInput, true) : null;
+$pregunta = trim((string) ($cuerpo['mensaje'] ?? $cuerpo['pregunta'] ?? $_POST['mensaje'] ?? ''));
 
 if ($pregunta === '') {
-    echo json_encode(['respuesta' => 'Por favor escribe tu consulta sobre nuestro menú o servicios.'], JSON_UNESCAPED_UNICODE);
-    exit;
+    responderJson(['error' => 'Escribe una pregunta para Damian IA.'], 400);
 }
 
-if (mb_strlen($pregunta) > 600) {
-    echo json_encode(['respuesta' => 'Tu consulta es demasiado larga. Por favor resúmela en menos de 600 caracteres.'], JSON_UNESCAPED_UNICODE);
-    exit;
-}
+$menuTexto = "Menú disponible hoy en Gastrodalk:\n";
+if ($conexion instanceof PDO) {
+    try {
+        $stmt = $conexion->query("SELECT nombre, descripcion, precio, categoria FROM platos WHERE disponible = 1");
+        $platos = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
 
-$apiKey = leerVariableEntorno('GEMINI_API_KEY');
-if ($apiKey === '') {
-    echo json_encode(['respuesta' => 'Error: No se encontró GEMINI_API_KEY en Env Vars de EthioDeploy.'], JSON_UNESCAPED_UNICODE);
-    exit;
-}
-
-$contextoMenu = "Platos de Gastrodalk: Ajiaco Santafereño ($18.000), Bandeja Paisa ($25.000), Arroz con Pollo ($16.000), Caldo de Costilla ($12.000), Carne Asada ($22.000), Mojarra Frita ($24.000).";
-try {
-    $dbUrl = leerVariableEntorno('DATABASE_URL');
-    if ($dbUrl !== '') {
-        $p = parse_url($dbUrl);
-        $dsn = sprintf(
-            'mysql:host=%s;port=%s;dbname=%s;charset=utf8mb4',
-            $p['host'] ?? '127.0.0.1',
-            $p['port'] ?? '3306',
-            ltrim($p['path'] ?? '', '/')
-        );
-        $pdo = new PDO($dsn, urldecode($p['user'] ?? ''), urldecode($p['pass'] ?? ''), [
-            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-            PDO::ATTR_TIMEOUT => 5,
-        ]);
-        $rows = $pdo->query("SELECT nombre, descripcion, precio FROM platos WHERE disponible = 1")->fetchAll(PDO::FETCH_ASSOC);
-        if ($rows) {
-            $lineas = array_map(fn($r) => "- {$r['nombre']} (\${$r['precio']}): {$r['descripcion']}", $rows);
-            $contextoMenu = implode("\n", $lineas);
+        if (!empty($platos)) {
+            foreach ($platos as $fila) {
+                $nombre = (string) ($fila['nombre'] ?? '');
+                $categoria = (string) ($fila['categoria'] ?? '');
+                $descripcion = (string) ($fila['descripcion'] ?? '');
+                $precio = number_format((float) ($fila['precio'] ?? 0), 0, ',', '.');
+                $menuTexto .= "- {$nombre} ({$categoria}): {$descripcion} - Precio: \${$precio}\n";
+            }
+        } else {
+            $menuTexto .= "- No hay platos activos registrados en este momento.\n";
         }
+    } catch (Throwable $e) {
+        error_log('Error al leer platos: ' . $e->getMessage());
+        $menuTexto .= "- No se pudo cargar el menú desde la base de datos en este momento.\n";
     }
-} catch (Throwable $e) {
-    // Mantiene el menú de respaldo si falla la consulta
+} else {
+    $menuTexto .= "- Sin conexión activa a base de datos (" . ($errorConexion ?? 'revise configuración') . ").\n";
 }
 
-$promptSistema = "Eres Damian, el asistente gastronómico virtual oficial del restaurante Gastrodalk. "
-    . "Responde de forma amable, clara, breve y en español (sin usar asteriscos ni formato Markdown). "
-    . "Basa tus recomendaciones únicamente en este menú:\n\n"
-    . $contextoMenu . "\n\n"
-    . "Consulta del cliente: " . $pregunta;
+$apiKey = leerEntornoSeguro('GROQ_API_KEY');
+if ($apiKey === '') {
+    responderJson(['error' => 'Falta configurar GROQ_API_KEY en el entorno o en .env.'], 500);
+}
 
-$modelos = ['gemini-3.8-flash', 'gemini-3.8-flash'];
-$payloadJson = json_encode([
-    'contents' => [['parts' => [['text' => $promptSistema]]]],
-    'generationConfig' => [
-        'temperature'     => 0.7,
-        'maxOutputTokens' => 1200,
-        'thinkingConfig'  => [
-            'thinkingBudget' => 0,
+$instruccionesSistema = "Eres Damian IA, el asistente virtual de recomendación gastronómica del restaurante Gastrodalk. Responde de forma amable, breve y persuasiva basándote ÚNICAMENTE en la siguiente información:\n\n"
+    . $menuTexto . "\n"
+    . "Información del restaurante:\n"
+    . "- Los pedidos se realizan en la pestaña 'Menú Digital' indicando número de mesa y método de pago (Efectivo, Tarjeta o Transferencia Digital Nequi/PSE).\n"
+    . "- Las reservas se realizan en la pestaña 'Reservas' indicando nombre, teléfono, fecha, hora y número de personas.\n"
+    . "- Si preguntan por un plato que no está en la lista, indica amablemente que no lo manejamos y recomienda una opción del menú.\n"
+    . "- No uses asteriscos (*) ni bloques de código en la respuesta.";
+
+$payload = json_encode([
+    'model' => 'llama-3.3-70b-versatile',
+    'messages' => [
+        [
+            'role' => 'system',
+            'content' => $instruccionesSistema
         ],
+        [
+            'role' => 'user',
+            'content' => $pregunta
+        ]
     ],
+    'temperature' => 0.4,
+    'max_tokens' => 300
 ], JSON_UNESCAPED_UNICODE);
 
-$respuestaFinal = null;
-$ultimoError = 'Servicio temporalmente saturado.';
-$codigoHttpFinal = 0;
-
-foreach ($modelos as $modelo) {
-    $url = "https://generativelanguage.googleapis.com/v1beta/models/{$modelo}:generateContent?key=" . urlencode($apiKey);
-    $response = false;
-    $httpCode = 0;
-
-    if (function_exists('curl_init')) {
-        $ch = curl_init($url);
-        curl_setopt_array($ch, [
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_POST           => true,
-            CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
-            CURLOPT_POSTFIELDS     => $payloadJson,
-            CURLOPT_TIMEOUT        => 20,
-        ]);
-        $response = curl_exec($ch);
-        $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-    } else {
-        $ctx = stream_context_create([
-            'http' => [
-                'method'        => 'POST',
-                'header'        => "Content-Type: application/json\r\n",
-                'content'       => $payloadJson,
-                'timeout'       => 20,
-                'ignore_errors' => true,
-            ],
-        ]);
-        $response = @file_get_contents($url, false, $ctx);
-        if (isset($http_response_header[0]) && preg_match('/\s(\d{3})\s/', $http_response_header[0], $m)) {
-            $httpCode = (int) $m[1];
-        }
-    }
-
-    if ($response === false || $response === '') {
-        continue;
-    }
-
-    $data = json_decode((string) $response, true);
-    if ($httpCode < 400 && !empty($data['candidates'][0]['content']['parts'])) {
-        $partesTexto = [];
-        foreach ($data['candidates'][0]['content']['parts'] as $parte) {
-            if (!empty($parte['thought'])) {
-                continue;
-            }
-            if (isset($parte['text'])) {
-                $partesTexto[] = (string) $parte['text'];
-            }
-        }
-        $textoCandidato = trim(implode("\n", $partesTexto));
-        if ($textoCandidato !== '') {
-            $respuestaFinal = $textoCandidato;
-            break;
-        }
-    }
-
-    $codigoHttpFinal = $httpCode;
-    $ultimoError = $data['error']['message'] ?? "HTTP {$httpCode}";
-
-    if (in_array($httpCode, [429, 500, 503], true)) {
-        sleep(1);
-        continue;
-    }
-    break;
+if (!function_exists('curl_init')) {
+    responderJson(['error' => 'La extensión cURL de PHP no está habilitada en el servidor.'], 500);
 }
 
-if ($respuestaFinal === null) {
-    if (in_array($codigoHttpFinal, [0, 429, 500, 503], true)) {
-        echo json_encode([
-            'respuesta' => 'En este momento hay alta demanda en el servicio de IA. Por favor intenta de nuevo en unos segundos.'
-        ], JSON_UNESCAPED_UNICODE);
-    } else {
-        echo json_encode([
-            'respuesta' => "No se pudo procesar tu consulta ({$ultimoError})."
-        ], JSON_UNESCAPED_UNICODE);
-    }
-    exit;
+$ch = curl_init('https://api.groq.com/openai/v1/chat/completions');
+curl_setopt_array($ch, [
+    CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_POST => true,
+    CURLOPT_HTTPHEADER => [
+        'Content-Type: application/json',
+        'Authorization: Bearer ' . $apiKey
+    ],
+    CURLOPT_POSTFIELDS => $payload,
+    CURLOPT_TIMEOUT => 20
+]);
+
+$respuestaRaw = curl_exec($ch);
+$httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+$errorCurl = curl_error($ch);
+curl_close($ch);
+
+if ($respuestaRaw === false || $respuestaRaw === '') {
+    responderJson(['error' => 'Error de conexión con Groq: ' . ($errorCurl ?: 'respuesta vacía')], 502);
 }
 
-$textoLimpio = str_replace(['**', '*', '#', '`'], '', $respuestaFinal);
-echo json_encode(['respuesta' => trim($textoLimpio)], JSON_UNESCAPED_UNICODE);
+$data = json_decode((string) $respuestaRaw, true);
+if ($httpCode < 200 || $httpCode >= 300 || !isset($data['choices'][0]['message']['content'])) {
+    $msg = $data['error']['message'] ?? ('HTTP ' . $httpCode);
+    responderJson(['error' => 'Error de API de Groq: ' . $msg], $httpCode >= 400 ? $httpCode : 502);
+}
+
+$textoLimpio = str_replace(['**', '*', '#', '`'], '', (string) $data['choices'][0]['message']['content']);
+responderJson(['respuesta' => trim($textoLimpio)], 200);

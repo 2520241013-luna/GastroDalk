@@ -7,40 +7,13 @@
     <link rel="stylesheet" href="../css/estilos.css">
     <style>
         body.damian-page {
+            background-image: url('../imagenes/damian.jpg');
+            background-size: cover;
+            background-position: right center;
+            background-repeat: no-repeat;
+            background-attachment: fixed;
             min-height: 100vh;
             margin: 0;
-            position: relative;
-            background-color: #1a120b;
-        }
-
-        /* Video de fondo a pantalla completa */
-        .damian-bg-video {
-            position: fixed;
-            inset: 0;
-            width: 100vw;
-            height: 100vh;
-            object-fit: cover;
-            object-position: center;
-            z-index: -2;
-            pointer-events: none;
-        }
-
-        /* Superposición naranja recorrible hacia la izquierda para no tapar al chef */
-        .damian-bg-overlay {
-            position: fixed;
-            inset: 0;
-            width: 100vw;
-            height: 100vh;
-            z-index: -1;
-            pointer-events: none;
-            background:
-                linear-gradient(
-                    90deg,
-                    rgba(234, 88, 12, 0.78) 0%,
-                    rgba(249, 115, 22, 0.56) 34%,
-                    rgba(249, 115, 22, 0.14) 50%,
-                    rgba(15, 23, 42, 0.06) 100%
-                );
         }
 
         #damian-section.section-container {
@@ -53,8 +26,6 @@
             padding: 36px 24px 48px;
             display: flex;
             align-items: center;
-            position: relative;
-            z-index: 1;
         }
 
         .damian-layout-grid {
@@ -81,14 +52,14 @@
             display: inline-flex;
             align-items: center;
             gap: 7px;
-            background: rgba(255, 255, 255, 0.94);
+            background: rgba(255, 255, 255, 0.92);
             color: #c2410c;
             font-size: 12px;
             font-weight: 700;
             padding: 5px 12px;
             border-radius: 999px;
             margin-bottom: 8px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.16);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.14);
         }
 
         .damian-status-dot {
@@ -103,14 +74,14 @@
             color: #ffffff;
             margin: 0;
             font-size: 32px;
-            text-shadow: 0 2px 12px rgba(0, 0, 0, 0.45);
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
         }
 
         .damian-header-box p {
             color: #fff7ed;
             margin: 4px 0 0;
             font-size: 14px;
-            text-shadow: 0 1px 8px rgba(0, 0, 0, 0.45);
+            text-shadow: 0 1px 6px rgba(0, 0, 0, 0.45);
         }
 
         .damian-card.sophisticated-chat {
@@ -119,7 +90,7 @@
             -webkit-backdrop-filter: blur(10px);
             border: 1px solid rgba(255, 255, 255, 0.75);
             border-radius: 20px;
-            box-shadow: 0 18px 40px rgba(15, 23, 42, 0.28);
+            box-shadow: 0 18px 40px rgba(15, 23, 42, 0.22);
             overflow: hidden;
             max-width: 100%;
             width: 100%;
@@ -249,6 +220,99 @@
             box-shadow: 0 0 0 3px rgba(234, 88, 12, 0.16);
         }
 
+        .damian-side-loader {
+            width: 190px;
+            margin-top: 96px;
+            background: rgba(255, 252, 247, 0.92);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            border: 1px solid rgba(251, 146, 60, 0.55);
+            border-radius: 18px;
+            padding: 16px 14px;
+            text-align: center;
+            box-shadow: 0 14px 30px rgba(0, 0, 0, 0.18);
+            opacity: 0;
+            transform: translateX(18px) scale(0.96);
+            pointer-events: none;
+            transition: opacity 0.28s ease, transform 0.28s ease;
+        }
+
+        .damian-side-loader.active {
+            opacity: 1;
+            transform: translateX(0) scale(1);
+        }
+
+        .chef-pulse-ring {
+            width: 52px;
+            height: 52px;
+            margin: 0 auto 10px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #fff7ed, #fed7aa);
+            border: 2px solid #ea580c;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            animation: pulseChef 1.4s infinite ease-in-out;
+        }
+
+        .side-loader-title {
+            font-size: 13px;
+            font-weight: 700;
+            color: #9a3412;
+            margin-bottom: 4px;
+        }
+
+        .side-loader-sub {
+            font-size: 11px;
+            color: #57534e;
+            margin-bottom: 10px;
+        }
+
+        .typing-dots {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .typing-dots span {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: #ea580c;
+            animation: bounceDot 1.1s infinite ease-in-out;
+        }
+
+        .typing-dots span:nth-child(2) {
+            animation-delay: 0.18s;
+        }
+
+        .typing-dots span:nth-child(3) {
+            animation-delay: 0.36s;
+        }
+
+        @keyframes pulseChef {
+            0%, 100% {
+                box-shadow: 0 0 0 0 rgba(234, 88, 12, 0.35);
+                transform: scale(1);
+            }
+            50% {
+                box-shadow: 0 0 0 10px rgba(234, 88, 12, 0);
+                transform: scale(1.05);
+            }
+        }
+
+        @keyframes bounceDot {
+            0%, 80%, 100% {
+                transform: translateY(0);
+                opacity: 0.45;
+            }
+            40% {
+                transform: translateY(-6px);
+                opacity: 1;
+            }
+        }
+
         @keyframes fadeInUp {
             from {
                 opacity: 0;
@@ -261,15 +325,6 @@
         }
 
         @media (max-width: 900px) {
-            .damian-bg-overlay {
-                background: linear-gradient(
-                    180deg,
-                    rgba(234, 88, 12, 0.72) 0%,
-                    rgba(249, 115, 22, 0.42) 45%,
-                    rgba(249, 115, 22, 0.12) 100%
-                );
-            }
-
             .damian-layout-grid {
                 margin-left: auto;
                 margin-right: auto;
@@ -278,30 +333,29 @@
             .damian-main-col {
                 max-width: 100%;
             }
-        }
 
-        @media (prefers-reduced-motion: reduce) {
-            .damian-bg-video {
+            .damian-side-loader {
+                width: 100%;
+                margin-top: 0;
                 display: none;
+                align-items: center;
+                justify-content: center;
+                gap: 12px;
+                text-align: left;
+            }
+
+            .damian-side-loader.active {
+                display: flex;
+            }
+
+            .chef-pulse-ring {
+                margin: 0;
+                flex-shrink: 0;
             }
         }
     </style>
 </head>
 <body class="damian-page">
-
-    <video id="damian-bg-video"
-           class="damian-bg-video"
-           autoplay
-           muted
-           loop
-           playsinline
-           preload="auto"
-           poster="../imagenes/damian.jpg"
-           aria-hidden="true">
-        <source src="../imagenes/cheft.mp4" type="video/mp4">
-    </video>
-
-    <div class="damian-bg-overlay" aria-hidden="true"></div>
 
     <?php include '../includes/navbar.php'; ?>
 
@@ -342,29 +396,27 @@
                     </div>
                 </div>
             </div>
+
+            <aside id="damian-side-loader" class="damian-side-loader" aria-live="polite">
+                <div class="chef-pulse-ring">👨‍🍳</div>
+                <div>
+                    <div class="side-loader-title">Damián pensando...</div>
+                    <div class="side-loader-sub">Revisando sabores y carta</div>
+                    <div class="typing-dots">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                    </div>
+                </div>
+            </aside>
         </div>
     </section>
 
-    <footer style="text-align: center; padding: 20px; background-color: #1a1a1a; color: #ffffff; position: relative; z-index: 1;">
+    <footer style="text-align: center; padding: 20px; background-color: #1a1a1a; color: #ffffff;">
         <p>© <?php echo date("Y"); ?> Gastrodalk - Coreducación. Todos los derechos reservados.</p>
     </footer>
 
     <script>
-    (() => {
-        const bgVideo = document.getElementById('damian-bg-video');
-        if (bgVideo) {
-            bgVideo.muted = true;
-            const playVideo = () => {
-                const p = bgVideo.play();
-                if (p && typeof p.catch === 'function') {
-                    p.catch(() => {});
-                }
-            };
-            playVideo();
-            document.addEventListener('click', playVideo, { once: true });
-        }
-    })();
-
     function horaActual() {
         return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     }
@@ -389,7 +441,9 @@
     }
 
     function setCargando(estaCargando) {
+        const sideLoader = document.getElementById('damian-side-loader');
         const btnEnviar = document.getElementById('btn-enviar');
+        sideLoader.classList.toggle('active', estaCargando);
         btnEnviar.disabled = estaCargando;
     }
 
@@ -424,10 +478,25 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ mensaje: texto })
             });
-            const data = await res.json();
+
+            const rawText = await res.text();
+            let data = null;
+            try {
+                data = JSON.parse(rawText);
+            } catch (_) {
+                throw new Error(`Respuesta no JSON (HTTP ${res.status}): ${rawText.slice(0, 140)}`);
+            }
+
             document.getElementById(loadingId)?.remove();
 
-            if (data.respuesta) {
+            if (!res.ok) {
+                messages.innerHTML += `
+                    <div class="chat-bubble bot">
+                        ⚠️ <strong>Error HTTP ${res.status}:</strong> ${data.error || data.respuesta || 'Fallo en el servidor.'}
+                        <span class="chat-time">${horaActual()}</span>
+                    </div>
+                `;
+            } else if (data.respuesta) {
                 messages.innerHTML += `
                     <div class="chat-bubble bot">
                         🤖 <strong>Damian IA:</strong> ${data.respuesta}
@@ -446,7 +515,7 @@
             document.getElementById(loadingId)?.remove();
             messages.innerHTML += `
                 <div class="chat-bubble bot">
-                    ⚠️ Error de conexión con el servidor.
+                    ⚠️ <strong>Detalle:</strong> ${err && err.message ? err.message : 'Error de conexión con el servidor.'}
                     <span class="chat-time">${horaActual()}</span>
                 </div>
             `;

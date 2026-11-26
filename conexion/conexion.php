@@ -32,7 +32,7 @@ function leerEntornoSeguro(string $nombre): string
     // Respaldo .env local
     $envPath = __DIR__ . '/../.env';
     if (is_readable($envPath)) {
-        foreach (file($envPath, FILE_IGNORE_NEW_LINES + FILE_SKIP_EMPTY_LINES) as $linea) {
+        foreach (file($envPath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $linea) {
             $linea = trim($linea);
             if ($linea === '' || str_starts_with($linea, '#') || !str_contains($linea, '=')) {
                 continue;
@@ -58,7 +58,10 @@ function obtenerConexion(): PDO
     $databaseUrl = leerEntornoSeguro('DATABASE_URL');
 
     if ($databaseUrl !== '') {
-        $partes   = parse_url($databaseUrl);
+        $partes = parse_url($databaseUrl);
+        if (!is_array($partes)) {
+            throw new RuntimeException('DATABASE_URL tiene un formato inválido.');
+        }
         $host     = $partes['host'] ?? '127.0.0.1';
         $port     = (string) ($partes['port'] ?? '3306');
         $dbname   = ltrim($partes['path'] ?? '', '/');
@@ -91,7 +94,8 @@ $errorConexion = null;
 if (!defined('GASTRODALK_TESTING')) {
     try {
         $conexion = obtenerConexion();
-    } catch (PDOException $e) {
+    } catch (Throwable $e) {
         $errorConexion = $e->getMessage();
+        error_log('Error de conexión a BD: ' . $errorConexion);
     }
 }
